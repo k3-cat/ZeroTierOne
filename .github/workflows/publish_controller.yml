@@ -1,0 +1,23 @@
+# $schema: https://json.schemastore.org/github-workflow.json
+
+name: "Publish Controller"
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_controller.yml
+    secrets: inherit
+
+  docker:
+    needs: build
+    uses: ./.github/workflows/docker_controller.yml
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write

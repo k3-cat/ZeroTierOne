@@ -1,0 +1,23 @@
+# $schema: https://json.schemastore.org/github-workflow.json
+
+name: "Publish"
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+
+  release:
+    needs: build
+    uses: ./.github/workflows/release.yml
+
+    permissions:
+      contents: write
+
+    with:
+      digest_manifest: ${{ needs.build.outputs.digest_manifest }}

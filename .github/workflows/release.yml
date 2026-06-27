@@ -1,0 +1,46 @@
+# $schema: https://json.schemastore.org/github-workflow.json
+
+name: "_ Release _"
+
+on:
+  workflow_call:
+    inputs:
+      digest_manifest:
+        type: string
+        required: true
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download Linux Builds
+        uses: actions/download-artifact@v8
+        with:
+          name: zerotier-one-linux.tar.xz
+
+      - name: Download MacOS Builds
+        uses: actions/download-artifact@v8
+        with:
+          name: zerotier-one-macos.tar.xz
+
+      - name: Download Windows Builds
+        uses: actions/download-artifact@v8
+        with:
+          name: zerotier-one-windows.tar.xz
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body: "## sha256 \n\n${{ inputs.digest_manifest }}"
+          files: |
+            zerotier-one-linux.tar.xz
+            zerotier-one-macos.tar.xz
+            zerotier-one-windows.tar.xz

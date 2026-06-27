@@ -1,26 +1,39 @@
+# $schema: https://json.schemastore.org/github-workflow.json
+
+name: "_ Build _"
+
 on:
-  pull_request:
-  push:
   workflow_dispatch:
+  workflow_call:
+    outputs:
+      digest_manifest:
+        value: ${{ jobs.digests.outputs.manifest }}
 
 jobs:
-  build_ubuntu:
+  build-linux:
+    name: Linux
     runs-on: ubuntu-latest
+
+    outputs:
+      sha256: ${{ steps.digest.outputs.sha256 }}
+
     steps:
     - name: gitconfig
       run: |
         git config --global core.autocrlf input
       #        git config --global core.eol lf
-    - name: checkout
-      uses: actions/checkout@v4
-    - name: Install Rust
+
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
         targets: x86_64-unknown-linux-gnu
         components: rustfmt, clippy
 
-    - name: Set up cargo cache
+    - name: Setup cargo Cache
       uses: Swatinem/rust-cache@v2
       continue-on-error: false
       with:
@@ -31,41 +44,58 @@ jobs:
 
     - name: make
       run: make
+
     - name: selftest
       run: |
         make selftest
         ./zerotier-selftest
-    - name: 'Tar files' # keeps permissions (execute)
-      run: tar -cvf zerotier-one.tar zerotier-one
-    - name: Archive production artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: zerotier-one-ubuntu-x64
-        path: zerotier-one.tar
-        retention-days: 7
 
-  build_macos:
+    - name: Generate Digests
+      id: digest
+      run: |
+        SHA256=$(sha256sum my_file.zip | awk '{print $1}')
+        echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+    - name: Tar Builds
+      run: tar -cvJf zerotier-one-linux.tar.xz zerotier-one
+
+    - name: Upload Builds
+      uses: actions/upload-artifact@v7
+      with:
+        path: zerotier-one-linux.tar.xz
+        archive: false
+
+  build-macos:
+    name: MacOS
     runs-on: macos-latest
+
+    outputs:
+      sha256: ${{ steps.digest.outputs.sha256 }}
+
     steps:
     - name: gitconfig
       run: |
         git config --global core.autocrlf input
       #        git config --global core.eol lf
-    - name: checkout
-      uses: actions/checkout@v4
-    - name: Install Rust aarch64
+
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup Rust (aarch64)
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
         target: aarch64-apple-darwin
         components: rustfmt, clippy
-    - name: Install Rust x86_64
+
+    - name: Setup Rust (x86_64)
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
         target: x86_64-apple-darwin
         components: rustfmt, clippy
-    - name: Set up cargo cache
+
+    - name: Setup cargo Cache
       uses: Swatinem/rust-cache@v2
       continue-on-error: false
       with:
@@ -73,38 +103,54 @@ jobs:
         shared-key: ${{ runner.os }}-cargo-
         workspaces: |
           rustybits/
+
     - name: make
       run: make
+
     - name: selftest
       run: |
         make selftest
         ./zerotier-selftest
-    - name: 'Tar files' # keeps permissions (execute)
-      run: tar -cvf zerotier-one.tar zerotier-one
-    - name: Archive production artifacts
-      uses: actions/upload-artifact@v4
+
+    - name: Generate Digests
+      id: digest
+      run: |
+        SHA256=$(sha256sum my_file.zip | awk '{print $1}')
+        echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+    - name: Tar Builds
+      run: tar -cvJf zerotier-one-macos.tar.xz zerotier-one
+
+    - name: Upload Builds
+      uses: actions/upload-artifact@v7
       with:
-        name: zerotier-one-mac
-        path: zerotier-one.tar
-        retention-days: 7
+        path: zerotier-one-macos.tar.xz
+        archive: false
 
+  build-windows:
+    name: Windows
+    runs-on: windows-latest
 
-  build_windows:
-    runs-on: windows-2022
+    outputs:
+      sha256: ${{ steps.digest.outputs.sha256 }}
+
     steps:
     - name: gitconfig
       run: |
         git config --global core.autocrlf true
       #        git config --global core.eol lf
-    - name: checkout
-      uses: actions/checkout@v4
-    - name: Install Rust
+
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
         targets: x86_64-pc-windows-msvc
         components: rustfmt, clippy
-    - name: Set up cargo cache
+
+    - name: Setup cargo Cache
       uses: Swatinem/rust-cache@v2
       continue-on-error: false
       with:
@@ -113,14 +159,46 @@ jobs:
         workspaces: |
           rustybits/
 
-    - name: setup msbuild
-      uses: microsoft/setup-msbuild@v2
+    - name: Setup msbuild
+      uses: microsoft/setup-msbuild@v3
+
     - name: msbuild
       run: |
-        msbuild windows\ZeroTierOne.sln /m /p:Configuration=Release  /property:Platform=x64 /t:ZeroTierOne
-    - name: Archive production artifacts
-      uses: actions/upload-artifact@v4
+        msbuild windows\ZeroTierOne.sln /m /p:Configuration=Release /property:Platform=x64 /t:ZeroTierOne
+
+    - name: Generate Digests
+      id: digest
+      shell: pwsh
+      run: |
+        $SHA256 = (Get-FileHash -Path "windows/Build/x64/Release/zerotier-one_x64.exe" -Algorithm SHA256).Hash
+        echo "sha256=$SHA256" >> "$env:GITHUB_OUTPUT"
+
+    - name: Tar Builds
+      run: tar -cvJf zerotier-one-windows.tar.xz windows/Build/x64/Release/zerotier-one_x64.exe
+
+    - name: Upload Builds
+      uses: actions/upload-artifact@v7
       with:
-        name: zerotier-one-windows
-        path: windows/Build
-        retention-days: 7
+        path: zerotier-one-windows.tar.xz
+        archive: false
+
+  digests:
+    name: Generate Digests Manifest
+    runs-on: ubuntu-latest
+
+    needs:
+      - build-linux
+      - build-macos
+      - build-windows
+
+    outputs:
+      manifest: ${{ steps.manifest.outputs.content }}
+
+    steps:
+      - id: manifest
+        run: |
+          echo "content<<EOF" >> "$GITHUB_OUTPUT"
+          echo "linux: ${{ needs.build-linux.outputs.sha256 }}" >> "$GITHUB_OUTPUT"
+          echo "macos: ${{ needs.build-macos.outputs.sha256 }}" >> "$GITHUB_OUTPUT"
+          echo "windows: ${{ needs.build-windows.outputs.sha256 }}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"

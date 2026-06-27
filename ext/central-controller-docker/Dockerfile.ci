@@ -1,0 +1,26 @@
+FROM debian:latest AS base
+
+RUN apk update && apk add --no-cache \
+    netcat-openbsd \
+    postgresql-client \
+    jemalloc \
+    libpq \
+    curl \
+    gperftools \
+    gnupg \
+    grpc \
+    libgrpc
+
+
+FROM base AS run_base
+
+COPY --chmod=0755 ./zerotier-one /usr/bin/zerotier-one
+COPY --chmod=0755 /go/bin/migrate /usr/bin/migrate
+COPY ./opentelemetry-libs/*.so /usr/lib64/
+COPY ./ext/central-controller-docker/migrations /migrations
+
+RUN echo "/usr/lib64" > /etc/ld.so.conf.d/usr-lib64.conf && ldconfig
+
+COPY --chmod=0755 ./ext/central-controller-docker/main.sh /
+
+ENTRYPOINT /main.sh

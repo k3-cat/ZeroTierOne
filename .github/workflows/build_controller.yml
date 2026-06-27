@@ -1,0 +1,71 @@
+# $schema: https://json.schemastore.org/github-workflow.json
+
+name: "_ Build Controller _"
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      digest:
+        value: ${{ jobs.build.outputs.sha256 }}
+
+jobs:
+  build:
+    name: CV1
+    runs-on: ubuntu-latest
+
+    outputs:
+      sha256: ${{ steps.digest.outputs.sha256 }}
+
+    steps:
+    - name: gitconfig
+      run: |
+        git config --global core.autocrlf input
+      #        git config --global core.eol lf
+
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: x86_64-unknown-linux-gnu
+
+    - name: Setup cargo Cache
+      uses: Swatinem/rust-cache@v2
+      continue-on-error: false
+      with:
+        key: ${{ runner.os }}-cargo-${{ hashFiles('rustybits//Cargo.lock') }}
+        shared-key: ${{ runner.os }}-cargo-
+        workspaces: |
+          rustybits/
+
+    - name: Setup Protobuf
+      uses: arduino/setup-protoc@v3
+
+    - name: Setup gRPC
+      uses: eWaterCycle/setup-grpc@v5
+      with:
+        grpc-version: 1.81.1
+
+    - name: make
+      run: |
+        make clean && make central-controller -j8
+
+    - name: Generate Digests
+      id: digest
+      run: |
+        SHA256=$(sha256sum my_file.zip | awk '{print $1}')
+        echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+    - name: Upload Builds
+      uses: actions/upload-artifact@v7
+      with:
+        path: zerotier-one
+
+    - name: Upload OTEL Libs
+      uses: actions/upload-artifact@v7
+      with:
+        name: opentelemetry-libs
+        path: ext/opentelemetry-cpp-1.21.0/localinstall/lib/*.so
